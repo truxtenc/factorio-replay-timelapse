@@ -362,12 +362,12 @@ end
 
 -- Write CSV headers to the research progress files.
 function init_research_csv()
-  game.write_file(
+  helpers.write_file(
     events_filename,
     string.format("%s,%s,%s,%s\n", "tick", "frame", "timestamp", "event"),
     false
   )
-  game.write_file(
+  helpers.write_file(
     research_progress_filename,
     string.format("%s,%s,%s,%s,%s,%s\n", "state", "tick", "frame", "timestamp", "research_name", "research_progress"),
     false
@@ -411,7 +411,7 @@ function run()
     local force = game.players[1].force
     if force.current_research then
       local research = force.current_research
-      game.write_file(
+      helpers.write_file(
         research_progress_filename,
         string.format(
           "current,%s,%s,%s,%s,%s\n",
@@ -424,7 +424,7 @@ function run()
         true
       )
     else
-      game.write_file(
+      helpers.write_file(
         research_progress_filename,
         string.format(
           "none,%s,%s,%s,,\n",
@@ -557,7 +557,7 @@ function run()
   script.on_event(
     defines.events.on_research_finished,
     function (event)
-      game.write_file(
+      helpers.write_file(
         events_filename,
         string.format(
           "%s,%s,%s,%s,%s,",
@@ -569,8 +569,8 @@ function run()
         ),
         true
       )
-      game.write_file(events_filename, event.research.localised_name, true)
-      game.write_file(events_filename, "\n", true)
+      helpers.write_file(events_filename, event.research.localised_name, true)
+      helpers.write_file(events_filename, "\n", true)
     end
   )
 
@@ -601,7 +601,7 @@ function run()
   script.on_event(
     defines.events.on_rocket_launched,
     function (event)
-      game.write_file(
+      helpers.write_file(
         events_filename,
         string.format(
           "%s,%s,%s,%s\n",
@@ -618,7 +618,7 @@ function run()
   script.on_event(
     defines.events.on_rocket_launch_ordered,
     function (event)
-      game.write_file(
+      helpers.write_file(
         events_filename,
         string.format(
           "%s,%s,%s,%s\n",
