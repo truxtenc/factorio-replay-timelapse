@@ -579,7 +579,7 @@ function run()
     function (event)
       local idx = (event.tick % recently_built_ticks) + 1
       recently_built_bboxes[idx] = recently_built_bboxes[idx] or {}
-      table.insert(recently_built_bboxes[idx], entity_bbox(event.created_entity))
+      table.insert(recently_built_bboxes[idx], entity_bbox(event.entity))
     end
   )
 
