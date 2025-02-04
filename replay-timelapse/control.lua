@@ -4,12 +4,15 @@ function replay_timelapse_adjust_lerp_step_from_30fps_to_60fps(lerp_step)
 end
 
 function replay_timelapse_get_save_name()
-  local save_name = game.get_active_save_name()
-  if not save_name then
-    save_name = "unnamed_save"
+  -- Try to get a meaningful name from the map seed
+  local name = "unnamed"
+  if game.map_gen_settings and game.map_gen_settings.seed then
+    name = "map_" .. game.map_gen_settings.seed
   end
-  save_name = save_name:gsub("[^%w%-_]", "_")
-  return save_name
+  
+  -- Sanitize the name
+  name = name:gsub("[^%w%-_]", "_")
+  return name
 end
 
 function replay_timelapse_run()
@@ -22,15 +25,15 @@ function replay_timelapse_run()
   local speedup = settings.global["replay-timelapse-speedup"].value
   local watch_rocket_launch = settings.global["replay-timelapse-watch-rocket-launch"].value
 
-  local base_output_dir = settings.global["replay-timelapse-output-dir"].value
-  local save_name = replay_timelapse_get_save_name()
-  local save_dir = base_output_dir .. "/" .. save_name
+  -- Use script output directory (relative to save) with map-specific subfolder
+  local save_dir = game.get_script_output_directory()
+  local base_dir = save_dir .. "/" .. replay_timelapse_get_save_name()
 
   -- Function to get surface-specific path
   function replay_timelapse_get_surface_path(surface_name)
     -- Remove any potentially problematic characters from surface name
     local safe_surface_name = surface_name:gsub("[^%w%-_]", "_")
-    return save_dir .. "/" .. safe_surface_name
+    return base_dir .. "/" .. safe_surface_name
   end
 
   -- Camera movement parameters
