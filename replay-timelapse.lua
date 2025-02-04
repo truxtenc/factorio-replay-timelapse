@@ -1,8 +1,8 @@
 -- Output settings
 local resolution = {x = 1920, y = 1080}  -- Output image resolution (1080p)
---local resolution = {x = 3840, y = 2160}  -- Output image resolution (4k)
+-- local resolution = {x = 3840, y = 2160}  -- Output image resolution (4k)
 local framerate = 60                     -- Timelapse frames per second
-local speedup = 300                      -- Game seconds per timelapse second
+local speedup = 600                      -- Game seconds per timelapse second
 local watch_rocket_launch = false        -- If true, slow down to real time and zoom in on first rocket launch
 
 local output_dir = "replay-timelapse"    -- Output directory (relative to Factorio script output directory)
@@ -12,7 +12,7 @@ local research_progress_filename = output_dir .. "/research-progress.csv"
 local events_filename = output_dir .. "/events.csv"
 
 -- Camera movement parameters
-local min_zoom = 0.03125 * 4             -- Min zoom level (widest field of view)
+local min_zoom = 0.03125 * 2             -- Min zoom level (widest field of view)
 local max_zoom = 0.5                     -- Max zoom level (narrowest field of view)
 local rocket_min_zoom = min_zoom / 2     -- Min zoom level after zooming out from rocket launch
 local margin_fraction = 0.05             -- Fraction of screen to leave as margin on each edge
@@ -395,18 +395,25 @@ function run()
       filename_pattern = rocket_screenshot_filename_pattern
     end
 
-    game.take_screenshot{
-      surface = game.surfaces[1],
-      position = current_camera.position,
-      resolution = {resolution.x, resolution.y},
-      zoom = current_camera.zoom,
-      path = string.format(filename_pattern, frame_num),
-      show_entity_info = true,
-      daytime = 0,
-      allow_in_replay = true,
-      anti_alias = true,
-      force_render = true,
-    }
+    -- Iterate through all surfaces and take a screenshot of each
+    for _, surface in pairs(game.surfaces) do
+      -- Add surface name to filename to distinguish between different surfaces
+      local base_filename = string.format(filename_pattern, frame_num)
+      local surface_filename = base_filename:gsub(".png$", "_" .. surface.name .. ".png")
+      
+      game.take_screenshot{
+        surface = surface,
+        position = current_camera.position,
+        resolution = {resolution.x, resolution.y},
+        zoom = current_camera.zoom,
+        path = surface_filename,
+        show_entity_info = true,
+        daytime = 0,
+        allow_in_replay = true,
+        anti_alias = true,
+        force_render = true,
+      }
+    end
 
     local force = game.players[1].force
     if force.current_research then
