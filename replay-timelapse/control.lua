@@ -1,3 +1,15 @@
+-- Move this function to the top, before any other code
+function replay_timelapse_get_save_name()
+  -- Get the current save name from the game
+  local save_name = game.get_active_save_name()
+  if not save_name then
+    save_name = "unnamed_save"
+  end
+  -- Remove any potentially problematic characters from save name
+  save_name = save_name:gsub("[^%w%-_]", "_")
+  return save_name
+end
+
 -- Output settings
 local resolution = {
   x = settings.global["replay-timelapse-resolution-x"].value,
@@ -12,7 +24,7 @@ local save_name = replay_timelapse_get_save_name()
 local save_dir = base_output_dir .. "/" .. save_name
 
 -- Function to get surface-specific path
-local function get_surface_path(surface_name)
+function replay_timelapse_get_surface_path(surface_name)
   -- Remove any potentially problematic characters from surface name
   local safe_surface_name = surface_name:gsub("[^%w%-_]", "_")
   return save_dir .. "/" .. safe_surface_name
@@ -407,7 +419,7 @@ function replay_timelapse_watch(tick)
   
   -- Iterate through all surfaces and take a screenshot of each
   for _, surface in pairs(game.surfaces) do
-    local surface_dir = get_surface_path(surface.name)
+    local surface_dir = replay_timelapse_get_surface_path(surface.name)
     game.mkdir(surface_dir)
     
     local filename_pattern = watching_rocket_silo and "rocket-%08d.png" or "base-%08d.png"
@@ -659,17 +671,6 @@ script.on_event(
     end
   end
 )
-
-function replay_timelapse_get_save_name()
-  -- Get the current save name from the game
-  local save_name = game.get_active_save_name()
-  if not save_name then
-    save_name = "unnamed_save"
-  end
-  -- Remove any potentially problematic characters from save name
-  save_name = save_name:gsub("[^%w%-_]", "_")
-  return save_name
-end
 
 return {
   run = replay_timelapse_run,
