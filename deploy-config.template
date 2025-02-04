@@ -1,0 +1,8 @@
+# Copy this file to deploy-config and modify as needed
+# deploy-config will be gitignored
+
+# The directory where Factorio looks for mods
+FACTORIO_MODS_DIR="YOUR_FACTORIO_MODS_DIR"
+
+# Current version of the mod
+VERSION="0.0.3" 
