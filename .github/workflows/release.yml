@@ -1,0 +1,44 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Get version from tag
+        id: get_version
+        run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_ENV
+      
+      - name: Create mod directory
+        run: |
+          mkdir -p "replay-timelapse_${{ env.VERSION }}"
+          cp control.lua "replay-timelapse_${{ env.VERSION }}/"
+          cp settings.lua "replay-timelapse_${{ env.VERSION }}/"
+          cp info.json "replay-timelapse_${{ env.VERSION }}/"
+          cp -r locale "replay-timelapse_${{ env.VERSION }}/"
+          if [ -f "thumbnail.png" ]; then
+            cp thumbnail.png "replay-timelapse_${{ env.VERSION }}/"
+          fi
+          
+          # Update version in info.json
+          sed -i 's/"version": "[^"]*"/"version": "${{ env.VERSION }}"/' "replay-timelapse_${{ env.VERSION }}/info.json"
+      
+      - name: Create zip
+        run: zip -r "replay-timelapse_${{ env.VERSION }}.zip" "replay-timelapse_${{ env.VERSION }}"
+      
+      - name: Create Release
+        id: create_release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: replay-timelapse_${{ env.VERSION }}.zip
+          draft: false
+          prerelease: false
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} 

@@ -7,11 +7,16 @@ local framerate = settings.global["replay-timelapse-framerate"].value
 local speedup = settings.global["replay-timelapse-speedup"].value
 local watch_rocket_launch = settings.global["replay-timelapse-watch-rocket-launch"].value
 
-local output_dir = settings.global["replay-timelapse-output-dir"].value
-local screenshot_filename_pattern = output_dir .. "/%08d-base.png"
-local rocket_screenshot_filename_pattern = output_dir .. "/%08d-rocket.png"
-local research_progress_filename = output_dir .. "/research-progress.csv"
-local events_filename = output_dir .. "/events.csv"
+local base_output_dir = settings.global["replay-timelapse-output-dir"].value
+local save_name = get_save_name()
+local save_dir = base_output_dir .. "/" .. save_name
+
+-- Function to get surface-specific path
+local function get_surface_path(surface_name)
+  -- Remove any potentially problematic characters from surface name
+  local safe_surface_name = surface_name:gsub("[^%w%-_]", "_")
+  return save_dir .. "/" .. safe_surface_name
+end
 
 -- Camera movement parameters
 local min_zoom = settings.global["replay-timelapse-min-zoom"].value
@@ -385,12 +390,12 @@ end
 -- Write CSV headers to the research progress files.
 function init_research_csv()
   helpers.write_file(
-    events_filename,
+    save_dir .. "/events.csv",
     string.format("%s,%s,%s,%s\n", "tick", "frame", "timestamp", "event"),
     false
   )
   helpers.write_file(
-    research_progress_filename,
+    save_dir .. "/research-progress.csv",
     string.format("%s,%s,%s,%s,%s,%s\n", "state", "tick", "frame", "timestamp", "research_name", "research_progress"),
     false
   )
@@ -412,23 +417,23 @@ function run()
   local rocket_smoothing_camera = nil
 
   function watch(tick)
-    local filename_pattern = screenshot_filename_pattern
-    if watching_rocket_silo then
-      filename_pattern = rocket_screenshot_filename_pattern
-    end
-
+    -- Ensure base save directory exists
+    game.mkdir(save_dir)
+    
     -- Iterate through all surfaces and take a screenshot of each
     for _, surface in pairs(game.surfaces) do
-      -- Add surface name to filename to distinguish between different surfaces
-      local base_filename = string.format(filename_pattern, frame_num)
-      local surface_filename = base_filename:gsub(".png$", "_" .. surface.name .. ".png")
+      local surface_dir = get_surface_path(surface.name)
+      game.mkdir(surface_dir)
+      
+      local filename_pattern = watching_rocket_silo and "rocket-%08d.png" or "base-%08d.png"
+      local screenshot_path = surface_dir .. "/" .. string.format(filename_pattern, frame_num)
       
       game.take_screenshot{
         surface = surface,
         position = current_camera.position,
         resolution = {resolution.x, resolution.y},
         zoom = current_camera.zoom,
-        path = surface_filename,
+        path = screenshot_path,
         show_entity_info = true,
         daytime = 0,
         allow_in_replay = true,
@@ -441,7 +446,7 @@ function run()
     if force.current_research then
       local research = force.current_research
       helpers.write_file(
-        research_progress_filename,
+        save_dir .. "/research-progress.csv",
         string.format(
           "current,%s,%s,%s,%s,%s\n",
           tick,
@@ -454,7 +459,7 @@ function run()
       )
     else
       helpers.write_file(
-        research_progress_filename,
+        save_dir .. "/research-progress.csv",
         string.format(
           "none,%s,%s,%s,,\n",
           tick,
@@ -591,7 +596,7 @@ function run()
     defines.events.on_research_finished,
     function (event)
       helpers.write_file(
-        events_filename,
+        save_dir .. "/events.csv",
         string.format(
           "%s,%s,%s,%s,%s,",
           event.tick,
@@ -602,8 +607,8 @@ function run()
         ),
         true
       )
-      helpers.write_file(events_filename, event.research.localised_name, true)
-      helpers.write_file(events_filename, "\n", true)
+      helpers.write_file(save_dir .. "/events.csv", event.research.localised_name, true)
+      helpers.write_file(save_dir .. "/events.csv", "\n", true)
     end
   )
 
@@ -635,7 +640,7 @@ function run()
     defines.events.on_rocket_launched,
     function (event)
       helpers.write_file(
-        events_filename,
+        save_dir .. "/events.csv",
         string.format(
           "%s,%s,%s,%s\n",
           event.tick,
@@ -652,7 +657,7 @@ function run()
     defines.events.on_rocket_launch_ordered,
     function (event)
       helpers.write_file(
-        events_filename,
+        save_dir .. "/events.csv",
         string.format(
           "%s,%s,%s,%s\n",
           event.tick,
@@ -669,6 +674,17 @@ function run()
       end
     end
   )
+end
+
+local function get_save_name()
+  -- Get the current save name from the game
+  local save_name = game.get_active_save_name()
+  if not save_name then
+    save_name = "unnamed_save"
+  end
+  -- Remove any potentially problematic characters from save name
+  save_name = save_name:gsub("[^%w%-_]", "_")
+  return save_name
 end
 
 return {
