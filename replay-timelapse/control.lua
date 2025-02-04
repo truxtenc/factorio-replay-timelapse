@@ -72,7 +72,10 @@ function replay_timelapse_run()
   min_zoom = math.max(min_zoom_hard, min_zoom * resolution_correction)
   max_zoom = max_zoom * resolution_correction
   linger_end_zoom = math.max(min_zoom_hard, linger_end_zoom * resolution_correction)
+
+  -- Get screenshot divisor from settings
   local nth_tick = tick_per_s * speedup / framerate
+
   local recently_built_ticks = recently_built_seconds * tick_per_s * speedup
   local margin_expansion_factor = 1 + (2 * margin_fraction)
   local shrink_delay_ticks = shrink_delay_s * tick_per_s * speedup
@@ -243,7 +246,9 @@ function replay_timelapse_run()
         shrink_start_tick = nil,
         shrink_start_camera = nil,
         shrink_abort_tick = nil,
-        shrink_abort_camera = nil
+        shrink_abort_camera = nil,
+        shrinking_w = false,
+        shrinking_h = false
       }
     end
     return surface_states[surface.name]
@@ -418,13 +423,21 @@ function replay_timelapse_run()
   end
 
   function replay_timelapse_watch(tick)
-    -- Iterate through all surfaces and take a screenshot of each
-    for _, surface in pairs(game.surfaces) do
+    -- Only take screenshot if it's this surface's turn
+    local surface_count = #game.surfaces
+    local surface_index = math.floor(tick / nth_tick) % surface_count
+    
+    -- Get the surface for this tick
+    local surface = game.surfaces[surface_index + 1]
+    if surface then
       local state = replay_timelapse_get_surface_state(surface)
       local surface_dir = replay_timelapse_get_surface_path(surface.name)
       
       local filename_pattern = watching_rocket_silo and "rocket-%08d.png" or "base-%08d.png"
       local screenshot_path = surface_dir .. "/" .. string.format(filename_pattern, frame_num)
+      
+      -- Record start time using game.ticks_played
+      local start_time = game.ticks_played
       
       game.take_screenshot{
         surface = surface,
@@ -438,9 +451,19 @@ function replay_timelapse_run()
         anti_alias = true,
         force_render = true,
       }
+
+      -- Calculate and log time taken in milliseconds (assuming 60 ticks/second)
+      local ticks_taken = game.ticks_played - start_time
+      local ms_taken = ticks_taken * (1000/60)
+      game.print(string.format("Screenshot took %d ticks (%.2f ms)", ticks_taken, ms_taken))
     end
 
-    -- Update CSV paths
+    -- Only increment frame number after we've done all surfaces
+    if surface_index == surface_count - 1 then
+      frame_num = frame_num + 1
+    end
+
+    -- Update research progress CSV every tick regardless of screenshots
     local force = game.players[1].force
     if force.current_research then
       local research = force.current_research
@@ -468,8 +491,6 @@ function replay_timelapse_run()
         true
       )
     end
-
-    frame_num = frame_num + 1
   end
 
   function replay_timelapse_watch_base(event)
@@ -491,19 +512,19 @@ function replay_timelapse_run()
         state.last_expansion_bbox = expanded_bbox
       end
 
-      if shrink_start_tick ~= nil and shrink_abort_tick == nil then
+      if state.shrink_start_tick ~= nil and state.shrink_abort_tick == nil then
         local current_camera_bbox = replay_timelapse_camera_bbox(state.current_camera)
         if (base_bb.l < current_camera_bbox.l)
           or (base_bb.r > current_camera_bbox.r)
           or (base_bb.t < current_camera_bbox.t)
           or (base_bb.b > current_camera_bbox.b)
         then
-          shrink_abort_tick = event.tick
-          shrink_abort_camera = state.current_camera
+          state.shrink_abort_tick = event.tick
+          state.shrink_abort_camera = state.current_camera
         end
       end
 
-      if base_bb.l ~= nil and shrink_start_tick == nil and (event.tick - state.last_expansion) >= shrink_delay_ticks then
+      if base_bb.l ~= nil and state.shrink_start_tick == nil and (event.tick - state.last_expansion) >= shrink_delay_ticks then
         local target_bbox = state.bbox
         local shrinking = false
         if (base_bb.r - base_bb.l) / (state.bbox.r - state.bbox.l) < shrink_threshold then
@@ -516,10 +537,10 @@ function replay_timelapse_run()
         end
 
         if shrinking then
-          shrink_start_tick = event.tick
-          shrink_start_camera = state.current_camera
-          shrink_abort_tick = nil
-          shrink_abort_camera = nil
+          state.shrink_start_tick = event.tick
+          state.shrink_start_camera = state.current_camera
+          state.shrink_abort_tick = nil
+          state.shrink_abort_camera = nil
           state.bbox = base_bb
           state.last_expansion = event.tick
           state.last_expansion_bbox = state.bbox
@@ -542,20 +563,20 @@ function replay_timelapse_run()
       end
 
       local shrink_target_camera = nil
-      if shrink_start_tick ~= nil then
-        local shrink_tick = event.tick - shrink_start_tick
-        if (shrink_abort_tick == nil and shrink_tick > shrink_time_ticks)
-          or (shrink_abort_tick ~= nil and event.tick - shrink_abort_tick >= shrink_abort_recovery_ticks)
+      if state.shrink_start_tick ~= nil then
+        local shrink_tick = event.tick - state.shrink_start_tick
+        if (state.shrink_abort_tick == nil and shrink_tick > shrink_time_ticks)
+          or (state.shrink_abort_tick ~= nil and event.tick - state.shrink_abort_tick >= shrink_abort_recovery_ticks)
         then
-          shrink_start_tick = nil
-          shrink_start_camera = nil
-          shrink_abort_tick = nil
-          shrink_abort_camera = nil
-          shrinking_w = false
-          shrinking_h = false
+          state.shrink_start_tick = nil
+          state.shrink_start_camera = nil
+          state.shrink_abort_tick = nil
+          state.shrink_abort_camera = nil
+          state.shrinking_w = false
+          state.shrinking_h = false
         else
           shrink_target_camera = replay_timelapse_lerp_camera(
-            shrink_start_camera,
+            state.shrink_start_camera,
             bbox_target_camera,
             replay_timelapse_sirp(shrink_tick / shrink_time_ticks)
           )
@@ -563,11 +584,11 @@ function replay_timelapse_run()
       end
 
       local target_camera = bbox_target_camera
-      if shrink_abort_tick ~= nil and shrink_abort_camera ~= nil then
+      if state.shrink_abort_tick ~= nil and state.shrink_abort_camera ~= nil then
         target_camera = replay_timelapse_lerp_camera(
-          shrink_abort_camera,
+          state.shrink_abort_camera,
           bbox_target_camera,
-          (event.tick - shrink_abort_tick) / shrink_abort_recovery_ticks
+          (event.tick - state.shrink_abort_tick) / shrink_abort_recovery_ticks
         )
       elseif shrink_target_camera ~= nil then
         target_camera = shrink_target_camera
@@ -594,7 +615,8 @@ function replay_timelapse_run()
   end
 
   -- Register events
-  script.on_nth_tick(nth_tick, replay_timelapse_watch_base)
+  local actual_nth_tick = math.floor(nth_tick)
+  script.on_nth_tick(actual_nth_tick, replay_timelapse_watch_base)
   
   script.on_event(defines.events.on_research_finished, function(event)
     helpers.write_file(
@@ -615,10 +637,10 @@ function replay_timelapse_run()
 
   script.on_event(defines.events.on_built_entity, function(event)
     -- Get state for the surface where the entity was built
-    local state = replay_timelapse_get_surface_state(event.created_entity.surface)
+    local state = replay_timelapse_get_surface_state(event.entity.surface)
     local idx = (event.tick % recently_built_ticks) + 1
     state.recently_built_bboxes[idx] = state.recently_built_bboxes[idx] or {}
-    table.insert(state.recently_built_bboxes[idx], replay_timelapse_entity_bbox(event.created_entity))
+    table.insert(state.recently_built_bboxes[idx], replay_timelapse_entity_bbox(event.entity))
   end)
 
   script.on_event(defines.events.on_tick, function(event)

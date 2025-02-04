@@ -202,5 +202,14 @@ data:extend({
     minimum_value = 0,
     maximum_value = 60,
     order = "j5"
+  },
+  {
+    type = "int-setting",
+    name = "replay-timelapse-screenshot-divisor",
+    setting_type = "runtime-global",
+    default_value = 1,
+    minimum_value = 1,
+    maximum_value = 4,
+    order = "k",
   }
 }) 
