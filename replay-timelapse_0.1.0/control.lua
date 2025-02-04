@@ -1,35 +1,101 @@
--- Output settings
-local resolution = {x = 1920, y = 1080}  -- Output image resolution (1080p)
--- local resolution = {x = 3840, y = 2160}  -- Output image resolution (4k)
-local framerate = 60                     -- Timelapse frames per second
-local speedup = 600                      -- Game seconds per timelapse second
-local watch_rocket_launch = false        -- If true, slow down to real time and zoom in on first rocket launch
+-- Default configuration
+local default_config = {
+  resolution = {
+    x = 1920,  -- Output image resolution (1080p)
+    y = 1080
+  },
+  framerate = 60,        -- Timelapse frames per second
+  speedup = 600,         -- Game seconds per timelapse second
+  watch_rocket_launch = false,  -- If true, slow down to real time and zoom in on first rocket launch
+  output_dir = "replay-timelapse",  -- Output directory (relative to Factorio script output directory)
+  camera = {
+    min_zoom = 0.125,    -- Min zoom level (widest field of view)
+    max_zoom = 0.5,      -- Max zoom level (narrowest field of view)
+    rocket_min_zoom = 0.0625,  -- Min zoom level after zooming out from rocket launch
+    margin_fraction = 0.05,    -- Fraction of screen to leave as margin on each edge
+    shrink_threshold = 0.75,   -- Shrink base boundary when base width or height is less than this fraction of it
+    shrink_delay_s = 3,        -- Seconds to wait since last boundary expansion before shrinking base boundary
+    shrink_time_s = 2,         -- Seconds to complete a boundary shrink
+    shrink_abort_transition_s = 0.5,  -- Seconds of smooth transition after aborting a shrink
+    recently_built_seconds = 2,       -- When at minimum zoom, track buildings built in the last this many seconds
+    base_bbox_lerp_step = 0.35,      -- Exponential approach factor for base boundary tracking
+    camera_lerp_step = 0.35,         -- Exponential approach factor for camera movement
+    camera_rocket_lerp_step = 0.05,  -- Exponential approach factor for camera movement while zooming in on rocket silo
+    rocket_watch_delay_s = 1,        -- Seconds to keep zooming out after rocket disappears
+    rocket_linger_s = 6,             -- Seconds to linger after fully zooming out from rocket launch
+    linger_zoom_in_s = 30,           -- Seconds to zoom in after lingering after rocket launch
+    linger_end_zoom = 0.125,         -- Final zoom level after zooming in after lingering
+    linger_end_s = 10                -- Seconds to wait at final zoom level after zooming back in
+  }
+}
 
-local output_dir = "replay-timelapse"    -- Output directory (relative to Factorio script output directory)
+-- Helper function to merge tables, using values from b if they exist, otherwise from a
+local function merge_tables(a, b)
+  if not b then return a end
+  local result = {}
+  for k, v in pairs(a) do
+    if type(v) == "table" then
+      result[k] = merge_tables(v, b[k])
+    else
+      result[k] = b[k] ~= nil and b[k] or v
+    end
+  end
+  return result
+end
+
+-- Load and parse JSON configuration
+local config = default_config
+local json = require("json")
+local success, config_file = pcall(io.open, "replay-timelapse-config.json", "r")
+if success and config_file then
+  local success, loaded_config = pcall(function()
+    local content = config_file:read("*all")
+    config_file:close()
+    return json.decode(content)
+  end)
+  
+  if success then
+    config = merge_tables(default_config, loaded_config)
+  else
+    log("Warning: Failed to parse replay-timelapse-config.json, using default configuration")
+  end
+else
+  log("Warning: Could not find replay-timelapse-config.json, using default configuration")
+end
+
+-- Output settings
+local resolution = {
+  x = settings.global["replay-timelapse-resolution-x"].value,
+  y = settings.global["replay-timelapse-resolution-y"].value
+}
+local framerate = settings.global["replay-timelapse-framerate"].value
+local speedup = settings.global["replay-timelapse-speedup"].value
+local watch_rocket_launch = settings.global["replay-timelapse-watch-rocket-launch"].value
+
+local output_dir = settings.global["replay-timelapse-output-dir"].value
 local screenshot_filename_pattern = output_dir .. "/%08d-base.png"
 local rocket_screenshot_filename_pattern = output_dir .. "/%08d-rocket.png"
 local research_progress_filename = output_dir .. "/research-progress.csv"
 local events_filename = output_dir .. "/events.csv"
 
 -- Camera movement parameters
-local min_zoom = 0.03125 * 2             -- Min zoom level (widest field of view)
-local max_zoom = 0.5                     -- Max zoom level (narrowest field of view)
-local rocket_min_zoom = min_zoom / 2     -- Min zoom level after zooming out from rocket launch
-local margin_fraction = 0.05             -- Fraction of screen to leave as margin on each edge
-local shrink_threshold = 0.75            -- Shrink base boundary when base width or height is less than this fraction of it
-local shrink_delay_s = 3                 -- Seconds to wait since last boundary expansion before shrinking base boundary
-local shrink_time_s = 2                  -- Seconds to complete a boundary shrink
-local shrink_abort_transition_s = 0.5    -- Seconds of smooth transition after aborting a shrink
-local recently_built_seconds = 2         -- When at minimum zoom, track buildings built in the last this many seconds
-local base_bbox_lerp_step = 0.35         -- Exponential approach factor for base boundary tracking
-local camera_lerp_step = 0.35            -- Exponential approach factor for camera movement
-local camera_rocket_lerp_step = 0.05     -- Exponential approach factor for camera movement while zooming in on rocket silo
-local rocket_watch_delay_s = 1           -- Seconds to keep zooming out after rocket disappears
-local rocket_linger_s = 6                -- Seconds to linger after fully zooming out from rocket launch
-local linger_zoom_in_s = 30              -- Seconds to zoom in after lingering after rocket launch
-local linger_end_zoom = min_zoom         -- Final zoom level after zooming in after lingering
-local linger_end_s = 10                  -- Seconds to wait at final zoom level after zooming back in
-
+local min_zoom = settings.global["replay-timelapse-min-zoom"].value
+local max_zoom = settings.global["replay-timelapse-max-zoom"].value
+local rocket_min_zoom = settings.global["replay-timelapse-rocket-min-zoom"].value
+local margin_fraction = settings.global["replay-timelapse-margin-fraction"].value
+local shrink_threshold = settings.global["replay-timelapse-shrink-threshold"].value
+local shrink_delay_s = settings.global["replay-timelapse-shrink-delay"].value
+local shrink_time_s = settings.global["replay-timelapse-shrink-time"].value
+local shrink_abort_transition_s = settings.global["replay-timelapse-shrink-abort-transition"].value
+local recently_built_seconds = settings.global["replay-timelapse-recently-built-seconds"].value
+local base_bbox_lerp_step = settings.global["replay-timelapse-base-bbox-lerp-step"].value
+local camera_lerp_step = settings.global["replay-timelapse-camera-lerp-step"].value
+local camera_rocket_lerp_step = settings.global["replay-timelapse-camera-rocket-lerp-step"].value
+local rocket_watch_delay_s = settings.global["replay-timelapse-rocket-watch-delay"].value
+local rocket_linger_s = settings.global["replay-timelapse-rocket-linger"].value
+local linger_zoom_in_s = settings.global["replay-timelapse-linger-zoom-in"].value
+local linger_end_zoom = settings.global["replay-timelapse-linger-end-zoom"].value
+local linger_end_s = settings.global["replay-timelapse-linger-end"].value
 
 -- Game constants
 local tick_per_s = 60
@@ -206,9 +272,30 @@ function bbox_union_flattened(bboxess)
   return result
 end
 
--- Compute the smallest bounding box covering all of the player's buildings.
-function base_bbox()
-  local entities = game.surfaces[1].find_entities_filtered{force = "player"}
+-- Store per-surface state
+local surface_states = {}
+
+-- Initialize or get surface state
+function get_surface_state(surface)
+  if not surface_states[surface.name] then
+    surface_states[surface.name] = {
+      bbox = { l = -30, r = 30, t = -30, b = 30 },
+      current_camera = compute_camera({ l = -30, r = 30, t = -30, b = 30 }),
+      last_expansion = 0,
+      last_expansion_bbox = { l = -30, r = 30, t = -30, b = 30 },
+      recently_built_bboxes = {{}, {}, {}},
+      shrink_start_tick = nil,
+      shrink_start_camera = nil,
+      shrink_abort_tick = nil,
+      shrink_abort_camera = nil
+    }
+  end
+  return surface_states[surface.name]
+end
+
+-- Compute the smallest bounding box covering all of the player's buildings on a specific surface.
+function base_bbox(surface)
+  local entities = surface.find_entities_filtered{force = "player"}
   local result = {}
   for _, entity in ipairs(entities) do
     if entity.type ~= "character" and entity.type ~= "car" and entity.name ~= "crash-site-spaceship" then
@@ -451,99 +538,103 @@ function run()
       init_research_csv()
     end
 
-    local base_bb = base_bbox()
-    local expanded_bbox = expand_bbox(bbox, base_bb)
-    if (expanded_bbox.l < last_expansion_bbox.l)
-      or (expanded_bbox.r > last_expansion_bbox.r)
-      or (expanded_bbox.t < last_expansion_bbox.t)
-      or (expanded_bbox.b > last_expansion_bbox.b)
-    then
-      last_expansion = event.tick
-      last_expansion_bbox = expanded_bbox
-    end
-
-    if shrink_start_tick ~= nil and shrink_abort_tick == nil then
-      local current_camera_bbox = camera_bbox(current_camera)
-      if (base_bb.l < current_camera_bbox.l)
-        or (base_bb.r > current_camera_bbox.r)
-        or (base_bb.t < current_camera_bbox.t)
-        or (base_bb.b > current_camera_bbox.b)
+    -- Process each surface independently
+    for _, surface in pairs(game.surfaces) do
+      local state = get_surface_state(surface)
+      local base_bb = base_bbox(surface)
+      local expanded_bbox = expand_bbox(state.bbox, base_bb)
+      if (expanded_bbox.l < state.last_expansion_bbox.l)
+        or (expanded_bbox.r > state.last_expansion_bbox.r)
+        or (expanded_bbox.t < state.last_expansion_bbox.t)
+        or (expanded_bbox.b > state.last_expansion_bbox.b)
       then
-        shrink_abort_tick = event.tick
-        shrink_abort_camera = current_camera
-      end
-    end
-
-    if base_bb.l ~= nil and shrink_start_tick == nil and (event.tick - last_expansion) >= shrink_delay_ticks then
-      local target_bbox = bbox
-      local shrinking = false
-      if (base_bb.r - base_bb.l) / (bbox.r - bbox.l) < shrink_threshold then
-        target_bbox = lerp_bbox_x(target_bbox, base_bb, 1)
-        shrinking = true
-      end
-      if (base_bb.b - base_bb.t) / (bbox.b - bbox.t) < shrink_threshold then
-        target_bbox = lerp_bbox_y(target_bbox, base_bb, 1)
-        shrinking = true
+        state.last_expansion = event.tick
+        state.last_expansion_bbox = expanded_bbox
       end
 
-      if shrinking then
-        shrink_start_tick = event.tick
-        shrink_start_camera = current_camera
-        shrink_abort_tick = nil
-        shrink_abort_camera = nil
-        bbox = base_bb
-        last_expansion = event.tick
-        last_expansion_bbox = bbox
+      if shrink_start_tick ~= nil and shrink_abort_tick == nil then
+        local current_camera_bbox = camera_bbox(state.current_camera)
+        if (base_bb.l < current_camera_bbox.l)
+          or (base_bb.r > current_camera_bbox.r)
+          or (base_bb.t < current_camera_bbox.t)
+          or (base_bb.b > current_camera_bbox.b)
+        then
+          shrink_abort_tick = event.tick
+          shrink_abort_camera = state.current_camera
+        end
       end
-    else
-      bbox = lerp_bbox(bbox, expanded_bbox, base_bbox_lerp_step)
-    end
 
-    local bbox_target_camera = compute_camera(bbox)
-    if bbox_target_camera.desired_zoom < min_zoom then
-      local recent_bbox = bbox_union_flattened(recently_built_bboxes)
-      bbox_target_camera = pan_camera_to_cover_bbox(
-        {
-          position = current_camera.position,
-          zoom = bbox_target_camera.zoom,
-          desired_zoom = current_camera.zoom,
-        },
-        recent_bbox
-      )
-    end
+      if base_bb.l ~= nil and shrink_start_tick == nil and (event.tick - state.last_expansion) >= shrink_delay_ticks then
+        local target_bbox = state.bbox
+        local shrinking = false
+        if (base_bb.r - base_bb.l) / (state.bbox.r - state.bbox.l) < shrink_threshold then
+          target_bbox = lerp_bbox_x(target_bbox, base_bb, 1)
+          shrinking = true
+        end
+        if (base_bb.b - base_bb.t) / (state.bbox.b - state.bbox.t) < shrink_threshold then
+          target_bbox = lerp_bbox_y(target_bbox, base_bb, 1)
+          shrinking = true
+        end
 
-    local shrink_target_camera = nil
-    if shrink_start_tick ~= nil then
-      local shrink_tick = event.tick - shrink_start_tick
-      if (shrink_abort_tick == nil and shrink_tick > shrink_time_ticks)
-        or (shrink_abort_tick ~= nil and event.tick - shrink_abort_tick >= shrink_abort_recovery_ticks)
-      then
-        shrink_start_tick = nil
-        shrink_start_camera = nil
-        shrink_abort_tick = nil
-        shrink_abort_camera = nil
-        shrinking_w = false
-        shrinking_h = false
+        if shrinking then
+          shrink_start_tick = event.tick
+          shrink_start_camera = state.current_camera
+          shrink_abort_tick = nil
+          shrink_abort_camera = nil
+          state.bbox = base_bb
+          state.last_expansion = event.tick
+          state.last_expansion_bbox = state.bbox
+        end
       else
-        shrink_target_camera = lerp_camera(
-          shrink_start_camera,
-          bbox_target_camera,
-          sirp(shrink_tick / shrink_time_ticks)
+        state.bbox = lerp_bbox(state.bbox, expanded_bbox, base_bbox_lerp_step)
+      end
+
+      local bbox_target_camera = compute_camera(state.bbox)
+      if bbox_target_camera.desired_zoom < min_zoom then
+        local recent_bbox = bbox_union_flattened(state.recently_built_bboxes)
+        bbox_target_camera = pan_camera_to_cover_bbox(
+          {
+            position = state.current_camera.position,
+            zoom = bbox_target_camera.zoom,
+            desired_zoom = state.current_camera.zoom,
+          },
+          recent_bbox
         )
       end
-    end
 
-    local target_camera = bbox_target_camera
-    if shrink_abort_tick ~= nil and shrink_abort_camera ~= nil then
-      target_camera = lerp_camera(
-        shrink_abort_camera,
-        bbox_target_camera,
-        (event.tick - shrink_abort_tick) / shrink_abort_recovery_ticks
-      )
-    elseif shrink_target_camera ~= nil then
-      target_camera = shrink_target_camera
+      local shrink_target_camera = nil
+      if shrink_start_tick ~= nil then
+        local shrink_tick = event.tick - shrink_start_tick
+        if (shrink_abort_tick == nil and shrink_tick > shrink_time_ticks)
+          or (shrink_abort_tick ~= nil and event.tick - shrink_abort_tick >= shrink_abort_recovery_ticks)
+        then
+          shrink_start_tick = nil
+          shrink_start_camera = nil
+          shrink_abort_tick = nil
+          shrink_abort_camera = nil
+          shrinking_w = false
+          shrinking_h = false
+        else
+          shrink_target_camera = lerp_camera(
+            shrink_start_camera,
+            bbox_target_camera,
+            sirp(shrink_tick / shrink_time_ticks)
+          )
+        end
+      end
+
+      local target_camera = bbox_target_camera
+      if shrink_abort_tick ~= nil and shrink_abort_camera ~= nil then
+        target_camera = lerp_camera(
+          shrink_abort_camera,
+          bbox_target_camera,
+          (event.tick - shrink_abort_tick) / shrink_abort_recovery_ticks
+        )
+      elseif shrink_target_camera ~= nil then
+        target_camera = shrink_target_camera
+      end
+      state.current_camera = lerp_camera(state.current_camera, target_camera, camera_lerp_step)
     end
-    current_camera = lerp_camera(current_camera, target_camera, camera_lerp_step)
 
     watch(event.tick)
   end
@@ -585,8 +676,8 @@ function run()
     defines.events.on_built_entity,
     function (event)
       local idx = (event.tick % recently_built_ticks) + 1
-      recently_built_bboxes[idx] = recently_built_bboxes[idx] or {}
-      table.insert(recently_built_bboxes[idx], entity_bbox(event.entity))
+      state.recently_built_bboxes[idx] = state.recently_built_bboxes[idx] or {}
+      table.insert(state.recently_built_bboxes[idx], entity_bbox(event.entity))
     end
   )
 
@@ -594,7 +685,7 @@ function run()
     defines.events.on_tick,
     function (event)
       local idx = ((event.tick + 1) % recently_built_ticks) + 1
-      recently_built_bboxes[idx] = {}
+      state.recently_built_bboxes[idx] = {}
 
       if watching_rocket_silo then
         watch_rocket(event)

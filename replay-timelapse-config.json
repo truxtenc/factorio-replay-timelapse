@@ -1,0 +1,29 @@
+{
+  "resolution": {
+    "x": 1920,
+    "y": 1080
+  },
+  "framerate": 60,
+  "speedup": 600,
+  "watch_rocket_launch": false,
+  "output_dir": "replay-timelapse",
+  "camera": {
+    "min_zoom": 0.125,
+    "max_zoom": 0.5,
+    "rocket_min_zoom": 0.0625,
+    "margin_fraction": 0.05,
+    "shrink_threshold": 0.75,
+    "shrink_delay_s": 3,
+    "shrink_time_s": 2,
+    "shrink_abort_transition_s": 0.5,
+    "recently_built_seconds": 2,
+    "base_bbox_lerp_step": 0.35,
+    "camera_lerp_step": 0.35,
+    "camera_rocket_lerp_step": 0.05,
+    "rocket_watch_delay_s": 1,
+    "rocket_linger_s": 6,
+    "linger_zoom_in_s": 30,
+    "linger_end_zoom": 0.125,
+    "linger_end_s": 10
+  }
+}
