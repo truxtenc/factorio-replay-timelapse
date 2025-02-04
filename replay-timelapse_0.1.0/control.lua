@@ -8,7 +8,7 @@ local speedup = settings.global["replay-timelapse-speedup"].value
 local watch_rocket_launch = settings.global["replay-timelapse-watch-rocket-launch"].value
 
 local base_output_dir = settings.global["replay-timelapse-output-dir"].value
-local save_name = get_save_name()
+local save_name = replay_timelapse_get_save_name()
 local save_dir = base_output_dir .. "/" .. save_name
 
 -- Function to get surface-specific path
@@ -62,19 +62,19 @@ local rocket_zoom_out_ticks = rocket_launch_ticks - rocket_zoom_delay_ticks + ro
 local linger_zoom_in_ticks = linger_zoom_in_s * tick_per_s
 
 
-function adjust_lerp_step_from_30fps_to_60fps(lerp_step)
+function replay_timelapse_adjust_lerp_step_from_30fps_to_60fps(lerp_step)
   return 1 - math.sqrt(1 - lerp_step)
 end
 
 if framerate == 60 then
-  base_bbox_lerp_step = adjust_lerp_step_from_30fps_to_60fps(base_bbox_lerp_step)
-  camera_lerp_step = adjust_lerp_step_from_30fps_to_60fps(camera_lerp_step)
-  camera_rocket_lerp_step = adjust_lerp_step_from_30fps_to_60fps(camera_rocket_lerp_step)
+  base_bbox_lerp_step = replay_timelapse_adjust_lerp_step_from_30fps_to_60fps(base_bbox_lerp_step)
+  camera_lerp_step = replay_timelapse_adjust_lerp_step_from_30fps_to_60fps(camera_lerp_step)
+  camera_rocket_lerp_step = replay_timelapse_adjust_lerp_step_from_30fps_to_60fps(camera_rocket_lerp_step)
 end
 
 
 -- Return the bounding box of an entity.
-function entity_bbox(entity)
+function replay_timelapse_entity_bbox(entity)
   return {
     l = entity.bounding_box.left_top.x,
     r = entity.bounding_box.right_bottom.x,
@@ -84,7 +84,7 @@ function entity_bbox(entity)
 end
 
 -- Compute the smallest bounding box containing the union of two bounding boxes.
-function expand_bbox(bbox_a, bbox_b)
+function replay_timelapse_expand_bbox(bbox_a, bbox_b)
   return {
     l = math.floor(math.min(bbox_a.l, bbox_b.l or bbox_a.l)),
     r = math.ceil(math.max(bbox_a.r, bbox_b.r or bbox_a.r)),
@@ -95,7 +95,7 @@ end
 
 -- Linearly interpolate between two bounding boxes.
 -- t: Interpolation parameter in the interval [0, 1]
-function lerp_bbox(bbox_a, bbox_b, t)
+function replay_timelapse_lerp_bbox(bbox_a, bbox_b, t)
   local s = 1 - t
   return {
     l = s * bbox_a.l + t * bbox_b.l,
@@ -107,7 +107,7 @@ end
 
 -- Linearly interpolate only the x axis between two bounding boxes.
 -- t: Interpolation parameter in the interval [0, 1]
-function lerp_bbox_x(bbox_a, bbox_b, t)
+function replay_timelapse_lerp_bbox_x(bbox_a, bbox_b, t)
   local s = 1 - t
   return {
     l = s * bbox_a.l + t * bbox_b.l,
@@ -119,7 +119,7 @@ end
 
 -- Linearly interpolate only the y axis between two bounding boxes.
 -- t: Interpolation parameter in the interval [0, 1]
-function lerp_bbox_y(bbox_a, bbox_b, t)
+function replay_timelapse_lerp_bbox_y(bbox_a, bbox_b, t)
   local s = 1 - t
   return {
     l = bbox_a.l,
@@ -131,13 +131,13 @@ end
 
 -- Linear interpolation between two numbers
 -- t: Interpolation parameter in the interval [0, 1]
-function lerp(a, b, t)
+function replay_timelapse_lerp(a, b, t)
   return (1 - t) * a + t * b
 end
 
 -- Sinusoidal interpolation between 0 and 1
 -- t: Interpolation parameter in the interval [0, 1]
-function sirp(t)
+function replay_timelapse_sirp(t)
   return (math.sin((t - 0.5) * math.pi) + 1) / 2
 end
 
@@ -145,7 +145,7 @@ end
 -- Ease-in interpolation between 0 and 1
 -- t: Interpolation parameter in the interval [0, 1]
 -- f: Interpolation point where easing ends
-function ease_in(t, f)
+function replay_timelapse_ease_in(t, f)
   local alpha = 1 / (1 + math.pi/2 * (1/f - 1))
 
   if t <= f then
@@ -159,19 +159,19 @@ end
 -- Ease-out interpolation between 0 and 1
 -- t: Interpolation parameter in the interval [0, 1]
 -- f: Interpolation point from end where easing ends
-function ease_out(t, f)
-  return 1 - ease_in(1 - t, f)
+function replay_timelapse_ease_out(t, f)
+  return 1 - replay_timelapse_ease_in(1 - t, f)
 end
 
 
 -- Ease-in-out interpolation between 0 and 1
 -- t: Interpolation parameter in the interval [0, 1]
 -- f: Interpolation point from start and end where easing ends
-function ease_in_out(t, f)
+function replay_timelapse_ease_in_out(t, f)
   if t < 0.5 then
-    return ease_in(t * 2, f * 2) / 2
+    return replay_timelapse_ease_in(t * 2, f * 2) / 2
   else
-    return ease_out((t - 0.5) * 2, f * 2) / 2 + 0.5
+    return replay_timelapse_ease_out((t - 0.5) * 2, f * 2) / 2 + 0.5
   end
 end
 
@@ -180,14 +180,14 @@ end
 -- t: Number to clamp
 -- t_min: Minimum value for t
 -- t_max: Maximum value for t
-function clamp(t, t_min, t_max)
+function replay_timelapse_clamp(t, t_min, t_max)
   return math.max(t_min, math.min(t_max, t))
 end
 
 -- Linear interpolation between two cameras
 -- t: Interpolation factor in the interval [0, 1]
 -- Position and zoom are interpolated, desired zoom is taken from camera_b.
-function lerp_camera(camera_a, camera_b, t)
+function replay_timelapse_lerp_camera(camera_a, camera_b, t)
   local s = 1 - t
   return {
     position = {
@@ -202,11 +202,11 @@ end
 -- Compute the smallest bounding box containing the union
 -- of a list of lists of bounding boxes.
 -- bboxess: list of lists of bounding boxes
-function bbox_union_flattened(bboxess)
+function replay_timelapse_bbox_union_flattened(bboxess)
   local result = {}
   for _, bboxes in ipairs(bboxess) do
     for _, bbox in ipairs(bboxes) do
-      result = expand_bbox(bbox, result)
+      result = replay_timelapse_expand_bbox(bbox, result)
     end
   end
   return result
@@ -216,11 +216,11 @@ end
 local surface_states = {}
 
 -- Initialize or get surface state
-function get_surface_state(surface)
+function replay_timelapse_get_surface_state(surface)
   if not surface_states[surface.name] then
     surface_states[surface.name] = {
       bbox = { l = -30, r = 30, t = -30, b = 30 },
-      current_camera = compute_camera({ l = -30, r = 30, t = -30, b = 30 }),
+      current_camera = replay_timelapse_compute_camera({ l = -30, r = 30, t = -30, b = 30 }),
       last_expansion = 0,
       last_expansion_bbox = { l = -30, r = 30, t = -30, b = 30 },
       recently_built_bboxes = {{}, {}, {}},
@@ -234,19 +234,19 @@ function get_surface_state(surface)
 end
 
 -- Compute the smallest bounding box covering all of the player's buildings on a specific surface.
-function base_bbox(surface)
+function replay_timelapse_base_bbox(surface)
   local entities = surface.find_entities_filtered{force = "player"}
   local result = {}
   for _, entity in ipairs(entities) do
     if entity.type ~= "character" and entity.type ~= "car" and entity.name ~= "crash-site-spaceship" then
-      result = expand_bbox(entity_bbox(entity), result)
+      result = replay_timelapse_expand_bbox(replay_timelapse_entity_bbox(entity), result)
     end
   end
   return result
 end
 
 -- Compute a camera view centered on and zoomed out (as far as allowed) to cover a bounding box.
-function compute_camera(bbox)
+function replay_timelapse_compute_camera(bbox)
   local center = { x = (bbox.l + bbox.r) / 2, y = (bbox.t + bbox.b) / 2 }
 
   local w_tile = bbox.r - bbox.l
@@ -266,8 +266,8 @@ function compute_camera(bbox)
 end
 
 -- Compute a camera view optimized for watching a rocket launch.
-function compute_rocket_camera(event, rocket_silo, rocket_launch_start_tick)
-  local bbox = entity_bbox(rocket_silo)
+function replay_timelapse_compute_rocket_camera(event, rocket_silo, rocket_launch_start_tick)
+  local bbox = replay_timelapse_entity_bbox(rocket_silo)
   local h_tile = resolution.y / tile_size_px
   local center = {
     x = (bbox.l + bbox.r) / 2,
@@ -276,11 +276,11 @@ function compute_rocket_camera(event, rocket_silo, rocket_launch_start_tick)
 
   local zoom = 1
   if event.tick < rocket_launch_start_tick + rocket_linger_ticks then
-    zoom = lerp(
+    zoom = replay_timelapse_lerp(
       1,
       rocket_min_zoom,
-      ease_in_out(
-        clamp(
+      replay_timelapse_ease_in_out(
+        replay_timelapse_clamp(
           (event.tick - (rocket_launch_start_tick + rocket_zoom_delay_ticks)) / rocket_zoom_out_ticks,
           0,
           1
@@ -289,11 +289,11 @@ function compute_rocket_camera(event, rocket_silo, rocket_launch_start_tick)
       )
     )
   else
-    zoom = lerp(
+    zoom = replay_timelapse_lerp(
       rocket_min_zoom,
       linger_end_zoom,
-      ease_in_out(
-        clamp(
+      replay_timelapse_ease_in_out(
+        replay_timelapse_clamp(
           (event.tick - (rocket_launch_start_tick + rocket_linger_ticks)) / linger_zoom_in_ticks,
           0,
           1
@@ -311,7 +311,7 @@ function compute_rocket_camera(event, rocket_silo, rocket_launch_start_tick)
 end
 
 -- Compute a new camera with the same settings but a displaced position.
-function translate_camera(camera, dxy)
+function replay_timelapse_translate_camera(camera, dxy)
   return {
     position = {
       x = camera.position.x + dxy.x,
@@ -323,7 +323,7 @@ function translate_camera(camera, dxy)
 end
 
 -- Compute the bounding box for a camera's view, excluding the margins.
-function camera_bbox(camera)
+function replay_timelapse_camera_bbox(camera)
   local f = 2 * camera.zoom * tile_size_px * margin_expansion_factor
   return {
     l = camera.position.x - resolution.x / f,
@@ -338,9 +338,9 @@ end
 -- If the camera is smaller than the bounding box, move the camera as little as
 -- possible to be within the bounding box.
 -- This applies to each dimension independently.
-function pan_camera_to_cover_bbox(camera, bbox)
+function replay_timelapse_pan_camera_to_cover_bbox(camera, bbox)
   if bbox.l ~= nil then
-    local cbb = camera_bbox(camera)
+    local cbb = replay_timelapse_camera_bbox(camera)
     local bbox_w = bbox.r - bbox.l
     local bbox_h = bbox.b - bbox.t
     local camera_w = cbb.r - cbb.l
@@ -348,29 +348,29 @@ function pan_camera_to_cover_bbox(camera, bbox)
 
     if camera_w < bbox_w then
       if cbb.l < bbox.l then
-        camera = translate_camera(camera, { x = bbox.l - cbb.l, y = 0 })
+        camera = replay_timelapse_translate_camera(camera, { x = bbox.l - cbb.l, y = 0 })
       elseif cbb.r > bbox.r then
-        camera = translate_camera(camera, { x = bbox.r - cbb.r, y = 0 })
+        camera = replay_timelapse_translate_camera(camera, { x = bbox.r - cbb.r, y = 0 })
       end
     else
       if bbox.l < cbb.l then
-        camera = translate_camera(camera, { x = bbox.l - cbb.l, y = 0 })
+        camera = replay_timelapse_translate_camera(camera, { x = bbox.l - cbb.l, y = 0 })
       elseif bbox.r > cbb.r then
-        camera = translate_camera(camera, { x = bbox.r - cbb.r, y = 0 })
+        camera = replay_timelapse_translate_camera(camera, { x = bbox.r - cbb.r, y = 0 })
       end
     end
 
     if camera_h < bbox_h then
       if cbb.t < bbox.t then
-        camera = translate_camera(camera, { x = 0, y = bbox.t - cbb.t })
+        camera = replay_timelapse_translate_camera(camera, { x = 0, y = bbox.t - cbb.t })
       elseif cbb.b > bbox.b then
-        camera = translate_camera(camera, { x = 0, y = bbox.b - cbb.b })
+        camera = replay_timelapse_translate_camera(camera, { x = 0, y = bbox.b - cbb.b })
       end
     else
       if bbox.t < cbb.t then
-        camera = translate_camera(camera, { x = 0, y = bbox.t - cbb.t })
+        camera = replay_timelapse_translate_camera(camera, { x = 0, y = bbox.t - cbb.t })
       elseif bbox.b > cbb.b then
-        camera = translate_camera(camera, { x = 0, y = bbox.b - cbb.b })
+        camera = replay_timelapse_translate_camera(camera, { x = 0, y = bbox.b - cbb.b })
       end
     end
   end
@@ -379,7 +379,7 @@ function pan_camera_to_cover_bbox(camera, bbox)
 end
 
 -- Compute an ffmpeg time duration expressing the given frame count.
-function frame_to_timestamp(frame)
+function replay_timelapse_frame_to_timestamp(frame)
   local s = math.floor(frame / framerate)
   local m = math.floor(s / 60)
   local h = math.floor(m / 60)
@@ -388,7 +388,7 @@ function frame_to_timestamp(frame)
 end
 
 -- Write CSV headers to the research progress files.
-function init_research_csv()
+function replay_timelapse_init_research_csv()
   helpers.write_file(
     save_dir .. "/events.csv",
     string.format("%s,%s,%s,%s\n", "tick", "frame", "timestamp", "event"),
@@ -401,282 +401,266 @@ function init_research_csv()
   )
 end
 
-function run()
-  local bbox = { l = -30, r = 30, t = -30, b = 30 }
-  local current_camera = compute_camera(bbox)
-  local last_expansion = 0
-  local last_expansion_bbox = bbox
-  local recently_built_bboxes = {{}, {}, {}}
-  local shrink_start_tick = nil
-  local shrink_start_camera = nil
-  local shrink_abort_tick = nil
-  local shrink_abort_camera = nil
-  local frame_num = 0
-  local watching_rocket_silo = nil
-  local rocket_start_tick = nil
-  local rocket_smoothing_camera = nil
-
-  function watch(tick)
-    -- Ensure base save directory exists
-    game.mkdir(save_dir)
+function replay_timelapse_watch(tick)
+  -- Ensure base save directory exists
+  game.mkdir(save_dir)
+  
+  -- Iterate through all surfaces and take a screenshot of each
+  for _, surface in pairs(game.surfaces) do
+    local surface_dir = get_surface_path(surface.name)
+    game.mkdir(surface_dir)
     
-    -- Iterate through all surfaces and take a screenshot of each
-    for _, surface in pairs(game.surfaces) do
-      local surface_dir = get_surface_path(surface.name)
-      game.mkdir(surface_dir)
-      
-      local filename_pattern = watching_rocket_silo and "rocket-%08d.png" or "base-%08d.png"
-      local screenshot_path = surface_dir .. "/" .. string.format(filename_pattern, frame_num)
-      
-      game.take_screenshot{
-        surface = surface,
-        position = current_camera.position,
-        resolution = {resolution.x, resolution.y},
-        zoom = current_camera.zoom,
-        path = screenshot_path,
-        show_entity_info = true,
-        daytime = 0,
-        allow_in_replay = true,
-        anti_alias = true,
-        force_render = true,
-      }
-    end
-
-    local force = game.players[1].force
-    if force.current_research then
-      local research = force.current_research
-      helpers.write_file(
-        save_dir .. "/research-progress.csv",
-        string.format(
-          "current,%s,%s,%s,%s,%s\n",
-          tick,
-          frame_num,
-          frame_to_timestamp(frame_num),
-          research.name,
-          force.research_progress
-        ),
-        true
-      )
-    else
-      helpers.write_file(
-        save_dir .. "/research-progress.csv",
-        string.format(
-          "none,%s,%s,%s,,\n",
-          tick,
-          frame_num,
-          frame_to_timestamp(frame_num)
-        ),
-        true
-      )
-    end
-
-    frame_num = frame_num + 1
+    local filename_pattern = watching_rocket_silo and "rocket-%08d.png" or "base-%08d.png"
+    local screenshot_path = surface_dir .. "/" .. string.format(filename_pattern, frame_num)
+    
+    game.take_screenshot{
+      surface = surface,
+      position = current_camera.position,
+      resolution = {resolution.x, resolution.y},
+      zoom = current_camera.zoom,
+      path = screenshot_path,
+      show_entity_info = true,
+      daytime = 0,
+      allow_in_replay = true,
+      anti_alias = true,
+      force_render = true,
+    }
   end
 
-  function watch_base(event)
-    if event.tick == 0 then
-      init_research_csv()
-    end
-
-    -- Process each surface independently
-    for _, surface in pairs(game.surfaces) do
-      local state = get_surface_state(surface)
-      local base_bb = base_bbox(surface)
-      local expanded_bbox = expand_bbox(state.bbox, base_bb)
-      if (expanded_bbox.l < state.last_expansion_bbox.l)
-        or (expanded_bbox.r > state.last_expansion_bbox.r)
-        or (expanded_bbox.t < state.last_expansion_bbox.t)
-        or (expanded_bbox.b > state.last_expansion_bbox.b)
-      then
-        state.last_expansion = event.tick
-        state.last_expansion_bbox = expanded_bbox
-      end
-
-      if shrink_start_tick ~= nil and shrink_abort_tick == nil then
-        local current_camera_bbox = camera_bbox(state.current_camera)
-        if (base_bb.l < current_camera_bbox.l)
-          or (base_bb.r > current_camera_bbox.r)
-          or (base_bb.t < current_camera_bbox.t)
-          or (base_bb.b > current_camera_bbox.b)
-        then
-          shrink_abort_tick = event.tick
-          shrink_abort_camera = state.current_camera
-        end
-      end
-
-      if base_bb.l ~= nil and shrink_start_tick == nil and (event.tick - state.last_expansion) >= shrink_delay_ticks then
-        local target_bbox = state.bbox
-        local shrinking = false
-        if (base_bb.r - base_bb.l) / (state.bbox.r - state.bbox.l) < shrink_threshold then
-          target_bbox = lerp_bbox_x(target_bbox, base_bb, 1)
-          shrinking = true
-        end
-        if (base_bb.b - base_bb.t) / (state.bbox.b - state.bbox.t) < shrink_threshold then
-          target_bbox = lerp_bbox_y(target_bbox, base_bb, 1)
-          shrinking = true
-        end
-
-        if shrinking then
-          shrink_start_tick = event.tick
-          shrink_start_camera = state.current_camera
-          shrink_abort_tick = nil
-          shrink_abort_camera = nil
-          state.bbox = base_bb
-          state.last_expansion = event.tick
-          state.last_expansion_bbox = state.bbox
-        end
-      else
-        state.bbox = lerp_bbox(state.bbox, expanded_bbox, base_bbox_lerp_step)
-      end
-
-      local bbox_target_camera = compute_camera(state.bbox)
-      if bbox_target_camera.desired_zoom < min_zoom then
-        local recent_bbox = bbox_union_flattened(state.recently_built_bboxes)
-        bbox_target_camera = pan_camera_to_cover_bbox(
-          {
-            position = state.current_camera.position,
-            zoom = bbox_target_camera.zoom,
-            desired_zoom = state.current_camera.zoom,
-          },
-          recent_bbox
-        )
-      end
-
-      local shrink_target_camera = nil
-      if shrink_start_tick ~= nil then
-        local shrink_tick = event.tick - shrink_start_tick
-        if (shrink_abort_tick == nil and shrink_tick > shrink_time_ticks)
-          or (shrink_abort_tick ~= nil and event.tick - shrink_abort_tick >= shrink_abort_recovery_ticks)
-        then
-          shrink_start_tick = nil
-          shrink_start_camera = nil
-          shrink_abort_tick = nil
-          shrink_abort_camera = nil
-          shrinking_w = false
-          shrinking_h = false
-        else
-          shrink_target_camera = lerp_camera(
-            shrink_start_camera,
-            bbox_target_camera,
-            sirp(shrink_tick / shrink_time_ticks)
-          )
-        end
-      end
-
-      local target_camera = bbox_target_camera
-      if shrink_abort_tick ~= nil and shrink_abort_camera ~= nil then
-        target_camera = lerp_camera(
-          shrink_abort_camera,
-          bbox_target_camera,
-          (event.tick - shrink_abort_tick) / shrink_abort_recovery_ticks
-        )
-      elseif shrink_target_camera ~= nil then
-        target_camera = shrink_target_camera
-      end
-      state.current_camera = lerp_camera(state.current_camera, target_camera, camera_lerp_step)
-    end
-
-    watch(event.tick)
+  local force = game.players[1].force
+  if force.current_research then
+    local research = force.current_research
+    helpers.write_file(
+      save_dir .. "/research-progress.csv",
+      string.format(
+        "current,%s,%s,%s,%s,%s\n",
+        tick,
+        frame_num,
+        frame_to_timestamp(frame_num),
+        research.name,
+        force.research_progress
+      ),
+      true
+    )
+  else
+    helpers.write_file(
+      save_dir .. "/research-progress.csv",
+      string.format(
+        "none,%s,%s,%s,,\n",
+        tick,
+        frame_num,
+        frame_to_timestamp(frame_num)
+      ),
+      true
+    )
   end
 
-  function watch_rocket(event)
-    local target_camera = compute_rocket_camera(event, watching_rocket_silo, rocket_start_tick)
-    if event.tick < rocket_start_tick + rocket_zoom_delay_ticks then
-      rocket_smoothing_camera = lerp_camera(rocket_smoothing_camera or current_camera, target_camera, camera_rocket_lerp_step)
-      current_camera = lerp_camera(current_camera, rocket_smoothing_camera, camera_rocket_lerp_step)
-    else
-      current_camera = target_camera
-    end
-    watch(event.tick)
-  end
-
-  script.on_nth_tick(nth_tick, watch_base)
-
-  script.on_event(
-    defines.events.on_research_finished,
-    function (event)
-      helpers.write_file(
-        save_dir .. "/events.csv",
-        string.format(
-          "%s,%s,%s,%s,%s,",
-          event.tick,
-          frame_num,
-          frame_to_timestamp(frame_num),
-          "research-finished",
-          event.research.name
-        ),
-        true
-      )
-      helpers.write_file(save_dir .. "/events.csv", event.research.localised_name, true)
-      helpers.write_file(save_dir .. "/events.csv", "\n", true)
-    end
-  )
-
-  script.on_event(
-    defines.events.on_built_entity,
-    function (event)
-      local idx = (event.tick % recently_built_ticks) + 1
-      state.recently_built_bboxes[idx] = state.recently_built_bboxes[idx] or {}
-      table.insert(state.recently_built_bboxes[idx], entity_bbox(event.entity))
-    end
-  )
-
-  script.on_event(
-    defines.events.on_tick,
-    function (event)
-      local idx = ((event.tick + 1) % recently_built_ticks) + 1
-      state.recently_built_bboxes[idx] = {}
-
-      if watching_rocket_silo then
-        watch_rocket(event)
-        if event.tick - rocket_start_tick >= rocket_watch_ticks then
-          watching_rocket_silo = nil
-        end
-      end
-    end
-  )
-
-  script.on_event(
-    defines.events.on_rocket_launched,
-    function (event)
-      helpers.write_file(
-        save_dir .. "/events.csv",
-        string.format(
-          "%s,%s,%s,%s\n",
-          event.tick,
-          frame_num,
-          frame_to_timestamp(frame_num),
-          "rocket-launched"
-        ),
-        true
-      )
-    end
-  )
-
-  script.on_event(
-    defines.events.on_rocket_launch_ordered,
-    function (event)
-      helpers.write_file(
-        save_dir .. "/events.csv",
-        string.format(
-          "%s,%s,%s,%s\n",
-          event.tick,
-          frame_num,
-          frame_to_timestamp(frame_num),
-          "rocket-launch-ordered"
-        ),
-        true
-      )
-      if watch_rocket_launch and (watching_rocket_silo == nil) then
-        script.on_nth_tick(nil)
-        rocket_start_tick = event.tick
-        watching_rocket_silo = event.rocket_silo
-      end
-    end
-  )
+  frame_num = frame_num + 1
 end
 
-local function get_save_name()
+function replay_timelapse_watch_base(event)
+  if event.tick == 0 then
+    replay_timelapse_init_research_csv()
+  end
+
+  -- Process each surface independently
+  for _, surface in pairs(game.surfaces) do
+    local state = replay_timelapse_get_surface_state(surface)
+    local base_bb = replay_timelapse_base_bbox(surface)
+    local expanded_bbox = replay_timelapse_expand_bbox(state.bbox, base_bb)
+    if (expanded_bbox.l < state.last_expansion_bbox.l)
+      or (expanded_bbox.r > state.last_expansion_bbox.r)
+      or (expanded_bbox.t < state.last_expansion_bbox.t)
+      or (expanded_bbox.b > state.last_expansion_bbox.b)
+    then
+      state.last_expansion = event.tick
+      state.last_expansion_bbox = expanded_bbox
+    end
+
+    if shrink_start_tick ~= nil and shrink_abort_tick == nil then
+      local current_camera_bbox = replay_timelapse_camera_bbox(state.current_camera)
+      if (base_bb.l < current_camera_bbox.l)
+        or (base_bb.r > current_camera_bbox.r)
+        or (base_bb.t < current_camera_bbox.t)
+        or (base_bb.b > current_camera_bbox.b)
+      then
+        shrink_abort_tick = event.tick
+        shrink_abort_camera = state.current_camera
+      end
+    end
+
+    if base_bb.l ~= nil and shrink_start_tick == nil and (event.tick - state.last_expansion) >= shrink_delay_ticks then
+      local target_bbox = state.bbox
+      local shrinking = false
+      if (base_bb.r - base_bb.l) / (state.bbox.r - state.bbox.l) < shrink_threshold then
+        target_bbox = replay_timelapse_lerp_bbox_x(target_bbox, base_bb, 1)
+        shrinking = true
+      end
+      if (base_bb.b - base_bb.t) / (state.bbox.b - state.bbox.t) < shrink_threshold then
+        target_bbox = replay_timelapse_lerp_bbox_y(target_bbox, base_bb, 1)
+        shrinking = true
+      end
+
+      if shrinking then
+        shrink_start_tick = event.tick
+        shrink_start_camera = state.current_camera
+        shrink_abort_tick = nil
+        shrink_abort_camera = nil
+        state.bbox = base_bb
+        state.last_expansion = event.tick
+        state.last_expansion_bbox = state.bbox
+      end
+    else
+      state.bbox = replay_timelapse_lerp_bbox(state.bbox, expanded_bbox, base_bbox_lerp_step)
+    end
+
+    local bbox_target_camera = replay_timelapse_compute_camera(state.bbox)
+    if bbox_target_camera.desired_zoom < min_zoom then
+      local recent_bbox = replay_timelapse_bbox_union_flattened(state.recently_built_bboxes)
+      bbox_target_camera = replay_timelapse_pan_camera_to_cover_bbox(
+        {
+          position = state.current_camera.position,
+          zoom = bbox_target_camera.zoom,
+          desired_zoom = state.current_camera.zoom,
+        },
+        recent_bbox
+      )
+    end
+
+    local shrink_target_camera = nil
+    if shrink_start_tick ~= nil then
+      local shrink_tick = event.tick - shrink_start_tick
+      if (shrink_abort_tick == nil and shrink_tick > shrink_time_ticks)
+        or (shrink_abort_tick ~= nil and event.tick - shrink_abort_tick >= shrink_abort_recovery_ticks)
+      then
+        shrink_start_tick = nil
+        shrink_start_camera = nil
+        shrink_abort_tick = nil
+        shrink_abort_camera = nil
+        shrinking_w = false
+        shrinking_h = false
+      else
+        shrink_target_camera = replay_timelapse_lerp_camera(
+          shrink_start_camera,
+          bbox_target_camera,
+          replay_timelapse_sirp(shrink_tick / shrink_time_ticks)
+        )
+      end
+    end
+
+    local target_camera = bbox_target_camera
+    if shrink_abort_tick ~= nil and shrink_abort_camera ~= nil then
+      target_camera = replay_timelapse_lerp_camera(
+        shrink_abort_camera,
+        bbox_target_camera,
+        (event.tick - shrink_abort_tick) / shrink_abort_recovery_ticks
+      )
+    elseif shrink_target_camera ~= nil then
+      target_camera = shrink_target_camera
+    end
+    state.current_camera = replay_timelapse_lerp_camera(state.current_camera, target_camera, camera_lerp_step)
+  end
+
+  replay_timelapse_watch(event.tick)
+end
+
+function replay_timelapse_watch_rocket(event)
+  local target_camera = replay_timelapse_compute_rocket_camera(event, watching_rocket_silo, rocket_start_tick)
+  if event.tick < rocket_start_tick + rocket_zoom_delay_ticks then
+    rocket_smoothing_camera = replay_timelapse_lerp_camera(rocket_smoothing_camera or current_camera, target_camera, camera_rocket_lerp_step)
+    current_camera = replay_timelapse_lerp_camera(current_camera, rocket_smoothing_camera, camera_rocket_lerp_step)
+  else
+    current_camera = target_camera
+  end
+  replay_timelapse_watch(event.tick)
+end
+
+script.on_nth_tick(nth_tick, replay_timelapse_watch_base)
+
+script.on_event(
+  defines.events.on_research_finished,
+  function (event)
+    helpers.write_file(
+      save_dir .. "/events.csv",
+      string.format(
+        "%s,%s,%s,%s,%s,",
+        event.tick,
+        frame_num,
+        frame_to_timestamp(frame_num),
+        "research-finished",
+        event.research.name
+      ),
+      true
+    )
+    helpers.write_file(save_dir .. "/events.csv", event.research.localised_name, true)
+    helpers.write_file(save_dir .. "/events.csv", "\n", true)
+  end
+)
+
+script.on_event(
+  defines.events.on_built_entity,
+  function (event)
+    local idx = (event.tick % recently_built_ticks) + 1
+    state.recently_built_bboxes[idx] = state.recently_built_bboxes[idx] or {}
+    table.insert(state.recently_built_bboxes[idx], replay_timelapse_entity_bbox(event.entity))
+  end
+)
+
+script.on_event(
+  defines.events.on_tick,
+  function (event)
+    local idx = ((event.tick + 1) % recently_built_ticks) + 1
+    state.recently_built_bboxes[idx] = {}
+
+    if watching_rocket_silo then
+      replay_timelapse_watch_rocket(event)
+      if event.tick - rocket_start_tick >= rocket_watch_ticks then
+        watching_rocket_silo = nil
+      end
+    end
+  end
+)
+
+script.on_event(
+  defines.events.on_rocket_launched,
+  function (event)
+    helpers.write_file(
+      save_dir .. "/events.csv",
+      string.format(
+        "%s,%s,%s,%s\n",
+        event.tick,
+        frame_num,
+        frame_to_timestamp(frame_num),
+        "rocket-launched"
+      ),
+      true
+    )
+  end
+)
+
+script.on_event(
+  defines.events.on_rocket_launch_ordered,
+  function (event)
+    helpers.write_file(
+      save_dir .. "/events.csv",
+      string.format(
+        "%s,%s,%s,%s\n",
+        event.tick,
+        frame_num,
+        frame_to_timestamp(frame_num),
+        "rocket-launch-ordered"
+      ),
+      true
+    )
+    if watch_rocket_launch and (watching_rocket_silo == nil) then
+      script.on_nth_tick(nil)
+      rocket_start_tick = event.tick
+      watching_rocket_silo = event.rocket_silo
+    end
+  end
+)
+
+function replay_timelapse_get_save_name()
   -- Get the current save name from the game
   local save_name = game.get_active_save_name()
   if not save_name then
@@ -688,5 +672,5 @@ local function get_save_name()
 end
 
 return {
-  run = run,
+  run = replay_timelapse_run,
 }
