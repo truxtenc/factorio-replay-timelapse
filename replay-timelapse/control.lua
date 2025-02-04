@@ -6,10 +6,11 @@ end
 function replay_timelapse_get_save_name()
   -- Try to get a meaningful name from the map seed
   local name = "unnamed"
-  if game.map_gen_settings and game.map_gen_settings.seed then
-    name = "map_" .. game.map_gen_settings.seed
+  if game.default_map_gen_settings  and game.default_map_gen_settings.seed then
+    name = "map_" .. game.default_map_gen_settings.seed
   end
   
+
   -- Sanitize the name
   name = name:gsub("[^%w%-_]", "_")
   return name
@@ -26,9 +27,14 @@ function replay_timelapse_run()
   local watch_rocket_launch = settings.global["replay-timelapse-watch-rocket-launch"].value
 
   -- Use script output directory (relative to save) with map-specific subfolder
-  local save_dir = game.get_script_output_directory()
-  local base_dir = save_dir .. "/" .. replay_timelapse_get_save_name()
+  local base_dir = "__replay-timelapse__/output/" .. replay_timelapse_get_save_name()
 
+  -- Initialize state variables
+  local frame_num = 0
+  local watching_rocket_silo = nil
+  local rocket_start_tick = nil
+  local rocket_smoothing_camera = nil
+  
   -- Function to get surface-specific path
   function replay_timelapse_get_surface_path(surface_name)
     -- Remove any potentially problematic characters from surface name
@@ -226,9 +232,11 @@ function replay_timelapse_run()
   -- Initialize or get surface state
   function replay_timelapse_get_surface_state(surface)
     if not surface_states[surface.name] then
+      -- Initialize with a default camera view
+      local initial_camera = replay_timelapse_compute_camera({ l = -30, r = 30, t = -30, b = 30 })
       surface_states[surface.name] = {
         bbox = { l = -30, r = 30, t = -30, b = 30 },
-        current_camera = replay_timelapse_compute_camera({ l = -30, r = 30, t = -30, b = 30 }),
+        current_camera = initial_camera,
         last_expansion = 0,
         last_expansion_bbox = { l = -30, r = 30, t = -30, b = 30 },
         recently_built_bboxes = {{}, {}, {}},
@@ -398,34 +406,31 @@ function replay_timelapse_run()
   -- Write CSV headers to the research progress files.
   function replay_timelapse_init_research_csv()
     helpers.write_file(
-      save_dir .. "/events.csv",
+      base_dir .. "/events.csv",
       string.format("%s,%s,%s,%s\n", "tick", "frame", "timestamp", "event"),
       false
     )
     helpers.write_file(
-      save_dir .. "/research-progress.csv",
+      base_dir .. "/research-progress.csv",
       string.format("%s,%s,%s,%s,%s,%s\n", "state", "tick", "frame", "timestamp", "research_name", "research_progress"),
       false
     )
   end
 
   function replay_timelapse_watch(tick)
-    -- Ensure base save directory exists
-    game.mkdir(save_dir)
-    
     -- Iterate through all surfaces and take a screenshot of each
     for _, surface in pairs(game.surfaces) do
+      local state = replay_timelapse_get_surface_state(surface)
       local surface_dir = replay_timelapse_get_surface_path(surface.name)
-      game.mkdir(surface_dir)
       
       local filename_pattern = watching_rocket_silo and "rocket-%08d.png" or "base-%08d.png"
       local screenshot_path = surface_dir .. "/" .. string.format(filename_pattern, frame_num)
       
       game.take_screenshot{
         surface = surface,
-        position = current_camera.position,
+        position = state.current_camera.position,
         resolution = {resolution.x, resolution.y},
-        zoom = current_camera.zoom,
+        zoom = state.current_camera.zoom,
         path = screenshot_path,
         show_entity_info = true,
         daytime = 0,
@@ -435,16 +440,17 @@ function replay_timelapse_run()
       }
     end
 
+    -- Update CSV paths
     local force = game.players[1].force
     if force.current_research then
       local research = force.current_research
       helpers.write_file(
-        save_dir .. "/research-progress.csv",
+        base_dir .. "/research-progress.csv",
         string.format(
           "current,%s,%s,%s,%s,%s\n",
           tick,
           frame_num,
-          frame_to_timestamp(frame_num),
+          replay_timelapse_frame_to_timestamp(frame_num),
           research.name,
           force.research_progress
         ),
@@ -452,12 +458,12 @@ function replay_timelapse_run()
       )
     else
       helpers.write_file(
-        save_dir .. "/research-progress.csv",
+        base_dir .. "/research-progress.csv",
         string.format(
           "none,%s,%s,%s,,\n",
           tick,
           frame_num,
-          frame_to_timestamp(frame_num)
+          replay_timelapse_frame_to_timestamp(frame_num)
         ),
         true
       )
@@ -575,40 +581,53 @@ function replay_timelapse_run()
   function replay_timelapse_watch_rocket(event)
     local target_camera = replay_timelapse_compute_rocket_camera(event, watching_rocket_silo, rocket_start_tick)
     if event.tick < rocket_start_tick + rocket_zoom_delay_ticks then
-      rocket_smoothing_camera = replay_timelapse_lerp_camera(rocket_smoothing_camera or current_camera, target_camera, camera_rocket_lerp_step)
-      current_camera = replay_timelapse_lerp_camera(current_camera, rocket_smoothing_camera, camera_rocket_lerp_step)
+      -- Get the surface state for the rocket silo
+      local state = replay_timelapse_get_surface_state(watching_rocket_silo.surface)
+      rocket_smoothing_camera = replay_timelapse_lerp_camera(rocket_smoothing_camera or state.current_camera, target_camera, camera_rocket_lerp_step)
+      state.current_camera = replay_timelapse_lerp_camera(state.current_camera, rocket_smoothing_camera, camera_rocket_lerp_step)
     else
-      current_camera = target_camera
+      -- Update camera for the rocket silo's surface
+      local state = replay_timelapse_get_surface_state(watching_rocket_silo.surface)
+      state.current_camera = target_camera
     end
     replay_timelapse_watch(event.tick)
   end
 
   -- Register events
   script.on_nth_tick(nth_tick, replay_timelapse_watch_base)
+  
   script.on_event(defines.events.on_research_finished, function(event)
     helpers.write_file(
-      save_dir .. "/events.csv",
+      base_dir .. "/events.csv",
       string.format(
         "%s,%s,%s,%s,%s,",
         event.tick,
         frame_num,
-        frame_to_timestamp(frame_num),
+        replay_timelapse_frame_to_timestamp(frame_num),
         "research-finished",
         event.research.name
       ),
       true
     )
-    helpers.write_file(save_dir .. "/events.csv", event.research.localised_name, true)
-    helpers.write_file(save_dir .. "/events.csv", "\n", true)
+    helpers.write_file(base_dir .. "/events.csv", event.research.localised_name, true)
+    helpers.write_file(base_dir .. "/events.csv", "\n", true)
   end)
+
   script.on_event(defines.events.on_built_entity, function(event)
+    -- Get state for the surface where the entity was built
+    local state = replay_timelapse_get_surface_state(event.created_entity.surface)
     local idx = (event.tick % recently_built_ticks) + 1
     state.recently_built_bboxes[idx] = state.recently_built_bboxes[idx] or {}
-    table.insert(state.recently_built_bboxes[idx], replay_timelapse_entity_bbox(event.entity))
+    table.insert(state.recently_built_bboxes[idx], replay_timelapse_entity_bbox(event.created_entity))
   end)
+
   script.on_event(defines.events.on_tick, function(event)
-    local idx = ((event.tick + 1) % recently_built_ticks) + 1
-    state.recently_built_bboxes[idx] = {}
+    -- Update recently built bboxes for all surfaces
+    for _, surface in pairs(game.surfaces) do
+      local state = replay_timelapse_get_surface_state(surface)
+      local idx = ((event.tick + 1) % recently_built_ticks) + 1
+      state.recently_built_bboxes[idx] = {}
+    end
 
     if watching_rocket_silo then
       replay_timelapse_watch_rocket(event)
@@ -617,27 +636,29 @@ function replay_timelapse_run()
       end
     end
   end)
+
   script.on_event(defines.events.on_rocket_launched, function(event)
     helpers.write_file(
-      save_dir .. "/events.csv",
+      base_dir .. "/events.csv",
       string.format(
         "%s,%s,%s,%s\n",
         event.tick,
         frame_num,
-        frame_to_timestamp(frame_num),
+        replay_timelapse_frame_to_timestamp(frame_num),
         "rocket-launched"
       ),
       true
     )
   end)
+
   script.on_event(defines.events.on_rocket_launch_ordered, function(event)
     helpers.write_file(
-      save_dir .. "/events.csv",
+      base_dir .. "/events.csv",
       string.format(
         "%s,%s,%s,%s\n",
         event.tick,
         frame_num,
-        frame_to_timestamp(frame_num),
+        replay_timelapse_frame_to_timestamp(frame_num),
         "rocket-launch-ordered"
       ),
       true

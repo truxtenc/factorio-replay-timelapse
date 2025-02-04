@@ -30,15 +30,15 @@ fi
 MOD_NAME="replay-timelapse"
 MOD_FULL_NAME="${MOD_NAME}_${VERSION}"
 
-# Create zip file
-echo "Creating ${MOD_FULL_NAME}.zip..."
-rm -f "${MOD_FULL_NAME}.zip"
-zip -r "${MOD_FULL_NAME}.zip" "${MOD_NAME}"
-
-# Convert Windows path to WSL path and copy
+# Convert Windows path to WSL path
 WSL_MODS_DIR=$(wsl_path "$FACTORIO_MODS_DIR")
-echo "Copying to $WSL_MODS_DIR..."
-mkdir -p "$WSL_MODS_DIR"
-cp "${MOD_FULL_NAME}.zip" "$WSL_MODS_DIR"
+
+# Remove old version if it exists
+echo "Removing old version if it exists..."
+rm -rf "$WSL_MODS_DIR/$MOD_FULL_NAME"
+
+# Copy mod directory with versioned name
+echo "Copying to $WSL_MODS_DIR/$MOD_FULL_NAME..."
+cp -r "$MOD_NAME" "$WSL_MODS_DIR/$MOD_FULL_NAME"
 
 echo "Done!" 
